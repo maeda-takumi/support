@@ -134,9 +134,12 @@ function generateReview(string $answer1, string $answer2, string $apiKey): strin
         rawurlencode($apiKey)
     );
 
-    $prompt = "あなたは学習カリキュラムのメンターです。受講者の answer_1 と answer_2 を読み、努力を認めつつ改善点を具体的に示す日本語の総評を120〜220文字で1つ作成してください。箇条書きは禁止です。\n\n"
-        . "answer_1:\n{$answer1}\n\n"
-        . "answer_2:\n{$answer2}";
+    $prompt = "あなたは学習カリキュラムのメンターです。受講者の answer_1（必要に応じて answer_2）を読み、努力を認めつつ改善点を具体的に示す日本語の総評を120〜220文字で1つ作成してください。箇条書きは禁止です。\n\n"
+        . "answer_1:\n{$answer1}";
+
+    if (trim($answer2) !== '') {
+        $prompt .= "\n\nanswer_2:\n{$answer2}";
+    }
 
     $payload = [
         'contents' => [
@@ -294,8 +297,8 @@ function handleUpdateReview(): void
         $answer1 = trim((string)($row['answer_1'] ?? ''));
         $answer2 = trim((string)($row['answer_2'] ?? ''));
 
-        if ($answer1 === '' || $answer2 === '') {
-            throw new RuntimeException('answer_1 または answer_2 が空のため更新できません。');
+        if ($answer1 === '') {
+            throw new RuntimeException('answer_1 が空のため更新できません。');
         }
 
         if (containsUrl($answer1) || containsUrl($answer2)) {
