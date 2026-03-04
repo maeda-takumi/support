@@ -2,6 +2,7 @@
     const modal = document.getElementById('reviewModal');
     const modalTitle = document.getElementById('modalTitle');
     const modalReviewText = document.getElementById('modalReviewText');
+    const copyModalTextButton = document.querySelector('.js-copy-modal-text');
 
     const openModal = (title, text) => {
         if (!modal || !modalReviewText) return;
@@ -35,6 +36,22 @@
         }
     });
 
+    if (copyModalTextButton) {
+        copyModalTextButton.addEventListener('click', async () => {
+            if (!modalReviewText) return;
+
+            try {
+                await navigator.clipboard.writeText(modalReviewText.textContent || '');
+                const originalText = copyModalTextButton.textContent;
+                copyModalTextButton.textContent = 'コピーしました';
+                setTimeout(() => {
+                    copyModalTextButton.textContent = originalText || 'コピー';
+                }, 1200);
+            } catch (error) {
+                alert('コピーに失敗しました。');
+            }
+        });
+    }
     document.querySelectorAll('.js-api-btn').forEach((button) => {
         button.addEventListener('click', async () => {
             const caId = button.dataset.caId;

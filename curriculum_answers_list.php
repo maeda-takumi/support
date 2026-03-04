@@ -441,7 +441,10 @@ function pageUrl(int $targetPage, string $keyword): string
     <div class="modal__content" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
         <h2 id="modalTitle">全文表示</h2>
         <pre id="modalReviewText"></pre>
-        <button type="button" class="close-btn js-close-modal">閉じる</button>
+        <div class="modal__actions">
+            <button type="button" class="copy-btn js-copy-modal-text">コピー</button>
+            <button type="button" class="close-btn js-close-modal">閉じる</button>
+        </div>
     </div>
 </div>
 

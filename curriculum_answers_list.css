@@ -112,7 +112,7 @@ h1 {
     margin-top: 10px;
 }
 
-.api-btn, .pager, .close-btn, .search-form button, .clear-link {
+.api-btn, .pager, .copy-btn, .close-btn, .search-form button, .clear-link {
     display: inline-block;
     border: var(--border);
     box-shadow: 4px 4px 0 var(--ink);
@@ -190,10 +190,20 @@ h1 {
     overflow: auto;
 }
 
+.modal__actions {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.copy-btn {
+    background: #a8f0ff;
+}
 @media (max-width: 768px) {
     .page { padding: 10px; }
     h1 { font-size: 1.1rem; }
-    .api-btn, .pager, .close-btn, .search-form button, .clear-link { box-shadow: 3px 3px 0 var(--ink); }
+    .api-btn, .pager, .copy-btn, .close-btn, .search-form button, .clear-link { box-shadow: 3px 3px 0 var(--ink); }
     .search-form input[type="text"] { min-width: 180px; width: 100%; }
     .answer-list { grid-template-columns: 1fr; }
     .answer-items { grid-template-columns: 1fr; }
