@@ -348,6 +348,8 @@ function pageUrl(int $targetPage, string $keyword): string
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>curriculum_answer 一覧</title>
+    <link rel="icon" type="image/png" href="./img/icon.png">
+    <link rel="apple-touch-icon" href="./img/icon.png">
     <link rel="stylesheet" href="./curriculum_answers_list.css?v=<?= time(); ?>">
 </head>
 <body>
