@@ -8,6 +8,8 @@ require_once __DIR__ . '/prompt_template_service.php';
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const GEMINI_TEXT_MODEL = 'gemma-3-27b-it';
 const GEMINI_MEDIA_MODEL = 'gemini-2.5-flash';
+const GEMINI_INITIAL_MAX_OUTPUT_TOKENS = 300;
+const GEMINI_RETRY_MAX_OUTPUT_TOKENS = 600;
 const MEDIA_DOWNLOAD_TIMEOUT = 60;
 const MEDIA_DOWNLOAD_MAX_BYTES = 15 * 1024 * 1024;
 const MEDIA_MAX_URLS = 4;
@@ -151,29 +153,12 @@ function generateTextReview(PDO $pdo, string $curriculumId, string $answer1, str
 
     $prompt = buildReviewPrompt($pdo, $curriculumId, $answer1, $answer2);
 
-    $payload = [
-        'contents' => [
-            [
-                'parts' => [
-                    ['text' => $prompt],
-                ],
-            ],
-        ],
-        'generationConfig' => [
-            'temperature' => 0.4,
-            'topP' => 0.9,
-            'maxOutputTokens' => 300,
-        ],
+    $parts = [
+        ['text' => $prompt],
     ];
 
-    $response = httpPostJson($url, $payload);
-    $data = json_decode($response['body'], true);
+    return requestGeminiReviewText($url, $parts);
 
-    if (!is_array($data)) {
-        throw new RuntimeException('GeminiレスポンスのJSON解析に失敗しました');
-    }
-
-    return trim(extractGeminiText($data));
 }
 
 /**
@@ -203,27 +188,102 @@ function generateReviewWithMediaUrls(PDO $pdo, string $curriculumId, string $ans
         ];
     }
 
-    $payload = [
-        'contents' => [
-            [
-                'parts' => $parts,
+
+    return requestGeminiReviewText($url, $parts);
+}
+
+/**
+ * @param array<int, array<string, mixed>> $parts
+ */
+function requestGeminiReviewText(string $url, array $parts): string
+{
+    $maxOutputTokens = GEMINI_INITIAL_MAX_OUTPUT_TOKENS;
+
+    for ($attempt = 0; $attempt < 2; $attempt++) {
+        $payload = [
+            'contents' => [
+                [
+                    'parts' => $parts,
+                ],
             ],
-        ],
-        'generationConfig' => [
-            'temperature' => 0.4,
-            'topP' => 0.9,
-            'maxOutputTokens' => 300,
-        ],
-    ];
+            'generationConfig' => [
+                'temperature' => 0.4,
+                'topP' => 0.9,
+                'maxOutputTokens' => $maxOutputTokens,
+            ],
+        ];
 
-    $response = httpPostJson($url, $payload);
-    $data = json_decode($response['body'], true);
+        $response = httpPostJson($url, $payload);
+        $data = json_decode($response['body'], true);
 
-    if (!is_array($data)) {
-        throw new RuntimeException('GeminiレスポンスのJSON解析に失敗しました');
+        if (!is_array($data)) {
+            throw new RuntimeException('GeminiレスポンスのJSON解析に失敗しました');
+        }
+
+        $finishReason = ensureGeminiResponseIsAcceptable($data);
+
+        $text = trim(extractGeminiText($data));
+        if ($text !== '' && ($finishReason === null || $finishReason === 'STOP')) {
+            return $text;
+        }
+
+        if ($attempt === 0 && ($finishReason === 'MAX_TOKENS' || $text === '')) {
+            $maxOutputTokens = GEMINI_RETRY_MAX_OUTPUT_TOKENS;
+            continue;
+        }
+
+        if ($finishReason === 'MAX_TOKENS') {
+            throw new RuntimeException('Gemini応答が最大トークン数で途中終了しました');
+        }
     }
 
-    return trim(extractGeminiText($data));
+    throw new RuntimeException('Geminiの応答からreviewテキストを取得できませんでした');
+}
+
+/**
+ * @param array<string, mixed> $data
+ */
+function ensureGeminiResponseIsAcceptable(array $data): ?string
+{
+    $blockReason = $data['promptFeedback']['blockReason'] ?? null;
+    if (is_string($blockReason) && $blockReason !== '') {
+        throw new RuntimeException('Gemini応答がブロックされました: ' . $blockReason);
+    }
+
+    $finishReason = getGeminiFinishReason($data);
+    if ($finishReason === null || $finishReason === 'STOP') {
+        return $finishReason;
+    }
+
+    if ($finishReason !== 'MAX_TOKENS') {
+        throw new RuntimeException('Gemini応答が途中終了しました: ' . $finishReason);
+    }
+
+    return $finishReason;
+}
+
+/**
+ * @param array<string, mixed> $data
+ */
+function getGeminiFinishReason(array $data): ?string
+{
+    $candidates = $data['candidates'] ?? null;
+    if (!is_array($candidates) || $candidates === []) {
+        return null;
+    }
+
+    foreach ($candidates as $candidate) {
+        if (!is_array($candidate)) {
+            continue;
+        }
+
+        $finishReason = $candidate['finishReason'] ?? null;
+        if (is_string($finishReason) && $finishReason !== '') {
+            return $finishReason;
+        }
+    }
+
+    return null;
 }
 
 /**
