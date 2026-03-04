@@ -14,6 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
 }
 
 $page = max(1, (int)($_GET['page'] ?? 1));
+$keyword = trim((string)($_GET['keyword'] ?? ''));
 $offset = ($page - 1) * PER_PAGE;
 $errorMessage = '';
 $rows = [];
@@ -22,7 +23,7 @@ $totalPages = 1;
 
 try {
     $pdo = createPdo();
-    $totalRows = fetchTotalCount($pdo);
+    $totalRows = fetchTotalCount($pdo, $keyword);
     $totalPages = max(1, (int)ceil($totalRows / PER_PAGE));
 
     if ($page > $totalPages) {
@@ -30,7 +31,7 @@ try {
         $offset = ($page - 1) * PER_PAGE;
     }
 
-    $rows = fetchAnswers($pdo, PER_PAGE, $offset);
+    $rows = fetchAnswers($pdo, PER_PAGE, $offset, $keyword);
 } catch (Throwable $e) {
     $errorMessage = 'データの取得に失敗しました: ' . $e->getMessage();
 }
@@ -45,36 +46,72 @@ function createPdo(): PDO
     ]);
 }
 
-function fetchTotalCount(PDO $pdo): int
+function fetchTotalCount(PDO $pdo, string $keyword = ''): int
 {
-    $stmt = $pdo->query('SELECT COUNT(*) FROM curriculum_answer');
+    $sql = 'SELECT COUNT(*) FROM curriculum_answer ca LEFT JOIN curriculum c ON c.curriculum_id = ca.curriculum_id';
+    $params = [];
+
+    if ($keyword !== '') {
+        $sql .= " WHERE ca.line_name LIKE :kw OR ca.display_name LIKE :kw OR ca.answer_1 LIKE :kw OR ca.answer_2 LIKE :kw OR ca.q1 LIKE :kw OR ca.q2 LIKE :kw OR ca.q3 LIKE :kw OR ca.mail_address LIKE :kw OR ca.review LIKE :kw OR c.curriculum_name LIKE :kw";
+        $params['kw'] = '%' . $keyword . '%';
+    }
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
     return (int)$stmt->fetchColumn();
 }
 
 /**
  * @return array<int, array<string, mixed>>
  */
-function fetchAnswers(PDO $pdo, int $limit, int $offset): array
+function fetchAnswers(PDO $pdo, int $limit, int $offset, string $keyword = ''): array
 {
     $sql = <<<SQL
 SELECT
-    ca_id,
-    answer_date,
-    line_name,
-    display_name,
-    answer_1,
-    answer_2,
-    q1,
-    q2,
-    q3,
-    mail_address,
-    review
-FROM curriculum_answer
-ORDER BY answer_date DESC
+    ca.ca_id,
+    ca.curriculum_id,
+    c.curriculum_name,
+    ca.answer_date,
+    ca.line_name,
+    ca.display_name,
+    ca.answer_1,
+    ca.answer_2,
+    ca.q1,
+    ca.q2,
+    ca.q3,
+    ca.mail_address,
+    ca.review
+FROM curriculum_answer ca
+LEFT JOIN curriculum c ON c.curriculum_id = ca.curriculum_id
+SQL;
+
+    $params = [];
+    if ($keyword !== '') {
+        $sql .= <<<SQL
+ WHERE
+    ca.line_name LIKE :kw OR
+    ca.display_name LIKE :kw OR
+    ca.answer_1 LIKE :kw OR
+    ca.answer_2 LIKE :kw OR
+    ca.q1 LIKE :kw OR
+    ca.q2 LIKE :kw OR
+    ca.q3 LIKE :kw OR
+    ca.mail_address LIKE :kw OR
+    ca.review LIKE :kw OR
+    c.curriculum_name LIKE :kw
+SQL;
+        $params['kw'] = '%' . $keyword . '%';
+    }
+
+    $sql .= <<<SQL
+ ORDER BY ca.answer_date DESC
 LIMIT :limit OFFSET :offset
 SQL;
 
     $stmt = $pdo->prepare($sql);
+    foreach ($params as $key => $value) {
+        $stmt->bindValue(':' . $key, $value, PDO::PARAM_STR);
+    }
     $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
     $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
     $stmt->execute();
@@ -291,6 +328,20 @@ function h(?string $value): string
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+function listValue(array $row, string $key): string
+{
+    return trim((string)($row[$key] ?? ''));
+}
+
+function pageUrl(int $targetPage, string $keyword): string
+{
+    $params = ['page' => $targetPage];
+    if ($keyword !== '') {
+        $params['keyword'] = $keyword;
+    }
+
+    return '?' . http_build_query($params);
+}
 ?><!doctype html>
 <html lang="ja">
 <head>
@@ -304,59 +355,69 @@ function h(?string $value): string
     <header class="header">
         <h1>curriculum_answer 一覧</h1>
         <p>総件数: <?= number_format($totalRows); ?>件 / <?= $page; ?>ページ目</p>
+        <form method="get" class="search-form">
+            <label>
+                キーワード検索
+                <input type="text" name="keyword" value="<?= h($keyword); ?>" placeholder="名前・提出物・総評・カリキュラム名">
+            </label>
+            <input type="hidden" name="page" value="1">
+            <button type="submit">検索</button>
+            <?php if ($keyword !== ''): ?>
+                <a href="?" class="clear-link">クリア</a>
+            <?php endif; ?>
+        </form>
     </header>
 
     <?php if ($errorMessage !== ''): ?>
         <div class="error-box"><?= h($errorMessage); ?></div>
     <?php else: ?>
-        <div class="table-wrap">
-            <table>
-                <thead>
-                <tr>
-                    <th>回答日</th>
-                    <th>LINE名</th>
-                    <th>システム表示名</th>
-                    <th>提出物1</th>
-                    <th>提出物2</th>
-                    <th>Q1</th>
-                    <th>Q2</th>
-                    <th>Q3</th>
-                    <th>メールアドレス</th>
-                    <th>総評</th>
-                </tr>
-                </thead>
-                <tbody>
-                <?php if ($rows === []): ?>
-                    <tr>
-                        <td colspan="10" class="empty">データがありません。</td>
-                    </tr>
-                <?php else: ?>
+        <div class="list-wrap">
+            <?php if ($rows === []): ?>
+                <p class="empty">データがありません。</p>
+            <?php else: ?>
+                <ul class="answer-list">
                     <?php foreach ($rows as $row): ?>
                         <?php
                         $caId = (int)($row['ca_id'] ?? 0);
-                        $review = (string)($row['review'] ?? '');
+                        $review = listValue($row, 'review');
+                        $items = [
+                            '回答日' => listValue($row, 'answer_date'),
+                            'カリキュラムID' => listValue($row, 'curriculum_id'),
+                            'カリキュラム名' => listValue($row, 'curriculum_name'),
+                            'LINE名' => listValue($row, 'line_name'),
+                            'システム表示名' => listValue($row, 'display_name'),
+                            '提出物1' => listValue($row, 'answer_1'),
+                            '提出物2' => listValue($row, 'answer_2'),
+                            'Q1' => listValue($row, 'q1'),
+                            'Q2' => listValue($row, 'q2'),
+                            'Q3' => listValue($row, 'q3'),
+                            'メールアドレス' => listValue($row, 'mail_address'),
+                            '総評' => $review !== '' ? $review : '（未設定）',
+                        ];
                         ?>
-                        <tr data-ca-id="<?= $caId; ?>">
-                            <td><?= h((string)($row['answer_date'] ?? '')); ?></td>
-                            <td><?= h((string)($row['line_name'] ?? '')); ?></td>
-                            <td><?= h((string)($row['display_name'] ?? '')); ?></td>
-                            <td class="clamp"><?= h((string)($row['answer_1'] ?? '')); ?></td>
-                            <td class="clamp"><?= h((string)($row['answer_2'] ?? '')); ?></td>
-                            <td class="clamp"><?= h((string)($row['q1'] ?? '')); ?></td>
-                            <td class="clamp"><?= h((string)($row['q2'] ?? '')); ?></td>
-                            <td class="clamp"><?= h((string)($row['q3'] ?? '')); ?></td>
-                            <td><?= h((string)($row['mail_address'] ?? '')); ?></td>
-                            <td class="review-cell">
-                                <button type="button" class="review-text js-open-review" data-review="<?= h($review); ?>">
-                                    <?= h($review !== '' ? $review : '（未設定）'); ?>
-                                </button>
+                        <li class="answer-card" data-ca-id="<?= $caId; ?>">
+                            <dl class="answer-items">
+                                <?php foreach ($items as $label => $value): ?>
+                                    <div class="answer-item">
+                                        <dt><?= h($label); ?></dt>
+                                        <dd>
+                                            <button
+                                                type="button"
+                                                class="value-btn js-open-value"
+                                                data-title="<?= h($label); ?>"
+                                                data-value="<?= h($value); ?>"
+                                            ><?= h($value !== '' ? $value : '（未設定）'); ?></button>
+                                        </dd>
+                                    </div>
+                                <?php endforeach; ?>
+                            </dl>
+                            <div class="card-actions">
                                 <button type="button" class="api-btn js-api-btn" data-ca-id="<?= $caId; ?>">API</button>
-                            </td>
-                        </tr>
+                            </div>
+                        </li>
                     <?php endforeach; ?>
-                <?php endif; ?>
-                </tbody>
-            </table>
+                </ul>
+            <?php endif; ?>
         </div>
 
         <nav class="pagination" aria-label="ページネーション">
@@ -366,15 +427,15 @@ function h(?string $value): string
             ?>
 
             <?php if ($page > 1): ?>
-                <a href="?page=<?= $page - 1; ?>" class="pager">← 前へ</a>
+                <a href="<?= h(pageUrl($page - 1, $keyword)); ?>" class="pager">← 前へ</a>
             <?php endif; ?>
 
             <?php for ($i = $start; $i <= $end; $i++): ?>
-                <a href="?page=<?= $i; ?>" class="pager <?= $i === $page ? 'is-active' : ''; ?>"><?= $i; ?></a>
+                <a href="<?= h(pageUrl($i, $keyword)); ?>" class="pager <?= $i === $page ? 'is-active' : ''; ?>"><?= $i; ?></a>
             <?php endfor; ?>
 
             <?php if ($page < $totalPages): ?>
-                <a href="?page=<?= $page + 1; ?>" class="pager">次へ →</a>
+                <a href="<?= h(pageUrl($page + 1, $keyword)); ?>" class="pager">次へ →</a>
             <?php endif; ?>
         </nav>
     <?php endif; ?>
@@ -383,7 +444,7 @@ function h(?string $value): string
 <div class="modal" id="reviewModal" aria-hidden="true">
     <div class="modal__overlay js-close-modal"></div>
     <div class="modal__content" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-        <h2 id="modalTitle">総評（全文）</h2>
+        <h2 id="modalTitle">全文表示</h2>
         <pre id="modalReviewText"></pre>
         <button type="button" class="close-btn js-close-modal">閉じる</button>
     </div>

@@ -1,9 +1,13 @@
 (() => {
     const modal = document.getElementById('reviewModal');
+    const modalTitle = document.getElementById('modalTitle');
     const modalReviewText = document.getElementById('modalReviewText');
 
-    const openModal = (text) => {
+    const openModal = (title, text) => {
         if (!modal || !modalReviewText) return;
+        if (modalTitle) {
+            modalTitle.textContent = `${title}（全文）`;
+        }
         modalReviewText.textContent = text || '（未設定）';
         modal.classList.add('is-open');
         modal.setAttribute('aria-hidden', 'false');
@@ -15,9 +19,9 @@
         modal.setAttribute('aria-hidden', 'true');
     };
 
-    document.querySelectorAll('.js-open-review').forEach((button) => {
+    document.querySelectorAll('.js-open-value').forEach((button) => {
         button.addEventListener('click', () => {
-            openModal(button.dataset.review || '');
+            openModal(button.dataset.title || '項目', button.dataset.value || '');
         });
     });
 
@@ -58,10 +62,10 @@
                     throw new Error(data.message || '更新に失敗しました');
                 }
 
-                const row = button.closest('tr');
-                const reviewButton = row ? row.querySelector('.js-open-review') : null;
+                const card = button.closest('.answer-card');
+                const reviewButton = card ? Array.from(card.querySelectorAll('.js-open-value')).find((elem) => elem.dataset.title === '総評') : null;
                 if (reviewButton) {
-                    reviewButton.dataset.review = data.review;
+                    reviewButton.dataset.value = data.review;
                     reviewButton.textContent = data.review;
                 }
             } catch (error) {

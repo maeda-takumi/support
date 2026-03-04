@@ -34,56 +34,84 @@ h1 {
     font-size: 1.4rem;
 }
 
-.table-wrap {
-    overflow: auto;
+.search-form {
+    margin-top: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.search-form input[type="text"] {
+    min-width: 280px;
+    padding: 8px;
+    border: 2px solid var(--ink);
+}
+
+.list-wrap {
     border: var(--border);
     box-shadow: var(--shadow);
     background: var(--card);
+    padding: 12px;
 }
 
-table {
-    border-collapse: collapse;
-    min-width: 1200px;
-    width: 100%;
+.answer-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 12px;
 }
 
-th, td {
+.answer-card {
     border: 2px solid var(--ink);
-    padding: 10px;
-    vertical-align: top;
+    padding: 12px;
     background: #fff;
 }
 
-th {
-    background: var(--accent);
-    white-space: nowrap;
+.answer-items {
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 8px;
 }
 
-.clamp {
-    max-width: 220px;
-    max-height: 4.6em;
-    overflow: hidden;
-    line-height: 1.5;
+.answer-item {
+    margin: 0;
 }
 
-.review-cell {
-    min-width: 260px;
+
+.answer-item dt {
+    font-weight: 700;
+    margin-bottom: 4px;
 }
 
-.review-text {
-    display: block;
+.answer-item dd {
+    margin: 0;
+}
+
+.value-btn {
     width: 100%;
     text-align: left;
     background: #f6f6f6;
     border: 2px solid var(--ink);
     padding: 8px;
-    margin-bottom: 8px;
-    max-height: 4.6em;
+    line-height: 1.5;
+    min-height: 3.5em;
+    max-height: 7em;
     overflow: hidden;
     cursor: pointer;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
 }
 
-.api-btn, .pager, .close-btn {
+.card-actions {
+    margin-top: 10px;
+}
+
+.api-btn, .pager, .close-btn, .search-form button, .clear-link {
     display: inline-block;
     border: var(--border);
     box-shadow: 4px 4px 0 var(--ink);
@@ -164,5 +192,6 @@ th {
 @media (max-width: 768px) {
     .page { padding: 10px; }
     h1 { font-size: 1.1rem; }
-    .api-btn, .pager, .close-btn { box-shadow: 3px 3px 0 var(--ink); }
+    .api-btn, .pager, .close-btn, .search-form button, .clear-link { box-shadow: 3px 3px 0 var(--ink); }
+    .search-form input[type="text"] { min-width: 180px; width: 100%; }
 }
