@@ -50,7 +50,8 @@ function main(): int
             }
 
             $values = fetchSheetValues($sheetKey, $sheetName, $accessToken);
-            [$inserted, $updated, $skipped] = upsertSheetRows($pdo, $values, $map);
+            $curriculumId = (string)$curriculum['id'];
+            [$inserted, $updated, $skipped] = upsertSheetRows($pdo, $values, $map, $curriculumId);
 
             $totalInserted += $inserted;
             $totalUpdated += $updated;
@@ -105,7 +106,7 @@ function createPdo(): PDO
  */
 function fetchCurriculums(PDO $pdo): array
 {
-    $stmt = $pdo->query('SELECT curriculum_name, sheet_key, sheet_name, map FROM curriculum ORDER BY id ASC');
+    $stmt = $pdo->query('SELECT id, curriculum_name, sheet_key, sheet_name, map FROM curriculum ORDER BY id ASC');
     $rows = $stmt->fetchAll();
 
     return is_array($rows) ? $rows : [];
@@ -209,14 +210,14 @@ function fetchSheetValues(string $sheetKey, string $sheetName, string $accessTok
  * @param array<string, int> $map
  * @return array{0:int,1:int,2:int}
  */
-function upsertSheetRows(PDO $pdo, array $sheetRows, array $map): array
+function upsertSheetRows(PDO $pdo, array $sheetRows, array $map, string $curriculumId): array
 {
-    $columns = [
+    $requiredColumns = [
         'line_user_id', 'answer_id', 'answer_date', 'answer_id_user', 'line_name', 'display_name',
-        'answer_1', 'answer_2', 'q1', 'q2', 'q3', 'mail_address', 'curriculum_id',
+        'answer_1', 'q1', 'q2', 'q3', 'mail_address',
     ];
 
-    foreach ($columns as $column) {
+    foreach ($requiredColumns as $column) {
         if (!isset($map[$column])) {
             throw new RuntimeException('mapに必要なカラムがありません: ' . $column);
         }
@@ -248,13 +249,22 @@ function upsertSheetRows(PDO $pdo, array $sheetRows, array $map): array
         }
 
         $params = [];
-        foreach ($columns as $column) {
+        foreach ($requiredColumns as $column) {
             $index = (int)$map[$column] - 1;
             $value = $row[$index] ?? null;
             $params[$column] = normalizeCellValue($column, $value);
         }
 
-        if ($params['answer_id'] === null || $params['curriculum_id'] === null) {
+        if (isset($map['answer_2'])) {
+            $answer2Index = (int)$map['answer_2'] - 1;
+            $params['answer_2'] = normalizeCellValue('answer_2', $row[$answer2Index] ?? null);
+        } else {
+            $params['answer_2'] = null;
+        }
+
+        $params['curriculum_id'] = $curriculumId;
+
+        if ($params['answer_id'] === null || $params['curriculum_id'] === '') {
             $skipped++;
             continue;
         }
