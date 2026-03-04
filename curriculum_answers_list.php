@@ -382,16 +382,11 @@ function pageUrl(int $targetPage, string $keyword): string
                         $review = listValue($row, 'review');
                         $items = [
                             '回答日' => listValue($row, 'answer_date'),
-                            'カリキュラムID' => listValue($row, 'curriculum_id'),
                             'カリキュラム名' => listValue($row, 'curriculum_name'),
                             'LINE名' => listValue($row, 'line_name'),
                             'システム表示名' => listValue($row, 'display_name'),
                             '提出物1' => listValue($row, 'answer_1'),
                             '提出物2' => listValue($row, 'answer_2'),
-                            'Q1' => listValue($row, 'q1'),
-                            'Q2' => listValue($row, 'q2'),
-                            'Q3' => listValue($row, 'q3'),
-                            'メールアドレス' => listValue($row, 'mail_address'),
                             '総評' => $review !== '' ? $review : '（未設定）',
                         ];
                         ?>
