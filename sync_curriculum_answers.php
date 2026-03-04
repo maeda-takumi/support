@@ -223,17 +223,19 @@ function upsertSheetRows(PDO $pdo, array $sheetRows, array $map, string $curricu
         }
     }
 
+    $existsSql = 'SELECT 1 FROM curriculum_answer WHERE answer_id=:answer_id LIMIT 1';
     $updateSql = 'UPDATE curriculum_answer SET '
         . 'line_user_id=:line_user_id, answer_date=:answer_date, answer_id_user=:answer_id_user, '
         . 'line_name=:line_name, display_name=:display_name, answer_1=:answer_1, answer_2=:answer_2, '
-        . 'q1=:q1, q2=:q2, q3=:q3, mail_address=:mail_address '
-        . 'WHERE answer_id=:answer_id AND curriculum_id=:curriculum_id';
+        . 'q1=:q1, q2=:q2, q3=:q3, mail_address=:mail_address, curriculum_id=:curriculum_id '
+        . 'WHERE answer_id=:answer_id';
 
     $insertSql = 'INSERT INTO curriculum_answer '
         . '(line_user_id, answer_id, answer_date, answer_id_user, line_name, display_name, answer_1, answer_2, q1, q2, q3, mail_address, curriculum_id) '
         . 'VALUES '
         . '(:line_user_id, :answer_id, :answer_date, :answer_id_user, :line_name, :display_name, :answer_1, :answer_2, :q1, :q2, :q3, :mail_address, :curriculum_id)';
 
+    $existsStmt = $pdo->prepare($existsSql);
     $updateStmt = $pdo->prepare($updateSql);
     $insertStmt = $pdo->prepare($insertSql);
 
@@ -264,13 +266,25 @@ function upsertSheetRows(PDO $pdo, array $sheetRows, array $map, string $curricu
 
         $params['curriculum_id'] = $curriculumId;
 
+        if (isset($map['answer_2'])) {
+            $answer2Index = (int)$map['answer_2'] - 1;
+            $params['answer_2'] = normalizeCellValue('answer_2', $row[$answer2Index] ?? null);
+        } else {
+            $params['answer_2'] = null;
+        }
+
+        $params['curriculum_id'] = $curriculumId;
+
         if ($params['answer_id'] === null || $params['curriculum_id'] === '') {
             $skipped++;
             continue;
         }
 
-        $updateStmt->execute($params);
-        if ($updateStmt->rowCount() > 0) {
+        $existsStmt->execute(['answer_id' => $params['answer_id']]);
+        $exists = $existsStmt->fetchColumn();
+
+        if ($exists !== false) {
+            $updateStmt->execute($params);
             $updated++;
             continue;
         }
