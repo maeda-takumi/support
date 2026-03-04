@@ -501,9 +501,6 @@ function handleUpdateReview(): void
             throw new RuntimeException('answer_1 が空のため更新できません。');
         }
 
-        if (containsUrl($answer1) || containsUrl($answer2)) {
-            throw new RuntimeException('URLを含むため更新対象外です。');
-        }
 
         $review = generateReview($pdo, $curriculumId, $answer1, $answer2, $apiKey);
         if ($review === '') {
