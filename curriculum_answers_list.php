@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/prompt_template_service.php';
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const GEMINI_MODEL = 'gemma-3-27b-it';
@@ -125,7 +126,7 @@ function containsUrl(string $text): bool
     return preg_match('/https?:\/\/|www\./iu', $text) === 1;
 }
 
-function generateReview(string $answer1, string $answer2, string $apiKey): string
+function generateReview(PDO $pdo, string $curriculumId, string $answer1, string $answer2, string $apiKey): string
 {
     $url = sprintf(
         '%s/%s:generateContent?key=%s',
@@ -134,12 +135,7 @@ function generateReview(string $answer1, string $answer2, string $apiKey): strin
         rawurlencode($apiKey)
     );
 
-    $prompt = "あなたは学習カリキュラムのメンターです。受講者の answer_1（必要に応じて answer_2）を読み、努力を認めつつ改善点を具体的に示す日本語の総評を120〜220文字で1つ作成してください。箇条書きは禁止です。\n\n"
-        . "answer_1:\n{$answer1}";
-
-    if (trim($answer2) !== '') {
-        $prompt .= "\n\nanswer_2:\n{$answer2}";
-    }
+    $prompt = buildReviewPrompt($pdo, $curriculumId, $answer1, $answer2);
 
     $payload = [
         'contents' => [
@@ -286,7 +282,7 @@ function handleUpdateReview(): void
         }
 
         $pdo = createPdo();
-        $stmt = $pdo->prepare('SELECT answer_1, answer_2 FROM curriculum_answer WHERE ca_id = :ca_id LIMIT 1');
+        $stmt = $pdo->prepare('SELECT curriculum_id, answer_1, answer_2 FROM curriculum_answer WHERE ca_id = :ca_id LIMIT 1');
         $stmt->execute(['ca_id' => $caId]);
         $row = $stmt->fetch();
 
@@ -296,6 +292,7 @@ function handleUpdateReview(): void
 
         $answer1 = trim((string)($row['answer_1'] ?? ''));
         $answer2 = trim((string)($row['answer_2'] ?? ''));
+        $curriculumId = trim((string)($row['curriculum_id'] ?? ''));
 
         if ($answer1 === '') {
             throw new RuntimeException('answer_1 が空のため更新できません。');
@@ -305,7 +302,7 @@ function handleUpdateReview(): void
             throw new RuntimeException('URLを含むため更新対象外です。');
         }
 
-        $review = generateReview($answer1, $answer2, $apiKey);
+        $review = generateReview($pdo, $curriculumId, $answer1, $answer2, $apiKey);
         if ($review === '') {
             throw new RuntimeException('総評の生成に失敗しました。');
         }

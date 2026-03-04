@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/prompt_template_service.php';
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const GEMINI_MODEL = 'gemma-3-27b-it';
@@ -42,6 +43,7 @@ function main(): int
         $answerId = (string)$target['answer_id'];
         $answer1 = (string)($target['answer_1'] ?? '');
         $answer2 = (string)($target['answer_2'] ?? '');
+        $curriculumId = (string)($target['curriculum_id'] ?? '');
 
         if (trim($answer1) === '') {
             $skippedEmpty++;
@@ -54,7 +56,7 @@ function main(): int
         }
 
         try {
-            $review = generateReview($answer1, $answer2, $apiKey);
+            $review = generateReview($pdo, $curriculumId, $answer1, $answer2, $apiKey);
             if ($review === '') {
                 throw new RuntimeException('Geminiの応答からreviewテキストを取得できませんでした');
             }
@@ -96,7 +98,7 @@ function createPdo(): PDO
  */
 function fetchReviewTargets(PDO $pdo): array
 {
-    $sql = "SELECT answer_id, answer_1, answer_2 FROM curriculum_answer WHERE (review IS NULL OR TRIM(review) = '') ORDER BY answer_date ASC";
+    $sql = "SELECT answer_id, curriculum_id, answer_1, answer_2 FROM curriculum_answer WHERE (review IS NULL OR TRIM(review) = '') ORDER BY answer_date ASC";
     $stmt = $pdo->query($sql);
     $rows = $stmt->fetchAll();
 
@@ -108,7 +110,7 @@ function containsUrl(string $text): bool
     return preg_match('/https?:\/\/|www\./iu', $text) === 1;
 }
 
-function generateReview(string $answer1, string $answer2, string $apiKey): string
+function generateReview(PDO $pdo, string $curriculumId, string $answer1, string $answer2, string $apiKey): string
 {
     $url = sprintf(
         '%s/%s:generateContent?key=%s',
@@ -117,12 +119,7 @@ function generateReview(string $answer1, string $answer2, string $apiKey): strin
         rawurlencode($apiKey)
     );
 
-    $prompt = "あなたは学習カリキュラムのメンターです。受講者の answer_1（必要に応じて answer_2）を読み、努力を認めつつ改善点を具体的に示す日本語の総評を120〜220文字で1つ作成してください。箇条書きは禁止です。\n\n"
-        . "answer_1:\n{$answer1}";
-
-    if (trim($answer2) !== '') {
-        $prompt .= "\n\nanswer_2:\n{$answer2}";
-    }
+    $prompt = buildReviewPrompt($pdo, $curriculumId, $answer1, $answer2);
 
     $payload = [
         'contents' => [
