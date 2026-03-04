@@ -48,7 +48,7 @@ function createPdo(): PDO
 
 function fetchTotalCount(PDO $pdo, string $keyword = ''): int
 {
-    $sql = 'SELECT COUNT(*) FROM curriculum_answer ca LEFT JOIN curriculum c ON c.curriculum_id = ca.curriculum_id';
+    $sql = 'SELECT COUNT(*) FROM curriculum_answer ca LEFT JOIN curriculum c ON c.id = ca.curriculum_id';
     $params = [];
 
     if ($keyword !== '') {
@@ -82,7 +82,7 @@ SELECT
     ca.mail_address,
     ca.review
 FROM curriculum_answer ca
-LEFT JOIN curriculum c ON c.curriculum_id = ca.curriculum_id
+LEFT JOIN curriculum c ON c.id = ca.curriculum_id
 SQL;
 
     $params = [];
