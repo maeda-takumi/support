@@ -1,6 +1,7 @@
 
 # secrets
 serviceaccount.json
+service-account.json
 *.key
 *.pem
 

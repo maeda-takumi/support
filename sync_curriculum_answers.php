@@ -402,8 +402,16 @@ function httpRequest(string $method, string $url, array $headers = [], ?string $
 
 function logMessage(string $level, string $message): void
 {
+    static $output = null;
+
+    if (!is_resource($output)) {
+        $output = defined('STDOUT') ? STDOUT : fopen('php://output', 'wb');
+    }
+
     $time = date('Y-m-d H:i:s');
-    fwrite(STDOUT, sprintf("[%s] [%s] %s\n", $time, $level, $message));
+    if (is_resource($output)) {
+        fwrite($output, sprintf("[%s] [%s] %s\n", $time, $level, $message));
+    }
 }
 
 exit(main());
