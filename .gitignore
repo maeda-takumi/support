@@ -1,0 +1,6 @@
+
+# secrets
+serviceaccount.json
+*.key
+*.pem
+
