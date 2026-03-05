@@ -7,7 +7,7 @@ require_once __DIR__ . '/prompt_template_service.php';
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const GEMINI_TEXT_MODEL = 'gemma-3-27b-it';
-const GEMINI_MEDIA_MODEL = 'gemini-2.5-flash';
+const GEMINI_MEDIA_MODEL = 'gemini-3.1-flash-lite';
 const GEMINI_INITIAL_MAX_OUTPUT_TOKENS = 4096;
 const GEMINI_RETRY_MAX_OUTPUT_TOKENS = 8192;
 const MEDIA_DOWNLOAD_TIMEOUT = 60;
