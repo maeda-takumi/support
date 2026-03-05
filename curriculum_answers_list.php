@@ -23,6 +23,10 @@ if ($requestMethod === 'POST' && $requestAction === 'update_review') {
     handleUpdateReview();
     exit;
 }
+if ($requestMethod === 'POST' && $requestAction === 'update_done') {
+    handleUpdateDone();
+    exit;
+}
 if ($requestMethod === 'POST' && $requestAction === 'update_prompt_template') {
     handleUpdatePromptTemplate();
     exit;
@@ -35,6 +39,7 @@ if ($requestMethod === 'GET' && $requestAction === 'list_prompt_templates') {
 
 $page = max(1, (int)($_GET['page'] ?? 1));
 $keyword = trim((string)($_GET['keyword'] ?? ''));
+$doneFilter = normalizeDoneFilter((string)($_GET['done_filter'] ?? 'all'));
 $offset = ($page - 1) * PER_PAGE;
 $errorMessage = '';
 $rows = [];
@@ -43,7 +48,7 @@ $totalPages = 1;
 
 try {
     $pdo = createPdo();
-    $totalRows = fetchTotalCount($pdo, $keyword);
+    $totalRows = fetchTotalCount($pdo, $keyword, $doneFilter);
     $totalPages = max(1, (int)ceil($totalRows / PER_PAGE));
 
     if ($page > $totalPages) {
@@ -51,7 +56,7 @@ try {
         $offset = ($page - 1) * PER_PAGE;
     }
 
-    $rows = fetchAnswers($pdo, PER_PAGE, $offset, $keyword);
+    $rows = fetchAnswers($pdo, PER_PAGE, $offset, $keyword, $doneFilter);
 } catch (Throwable $e) {
     $errorMessage = 'データの取得に失敗しました: ' . $e->getMessage();
 }
@@ -66,14 +71,30 @@ function createPdo(): PDO
     ]);
 }
 
-function fetchTotalCount(PDO $pdo, string $keyword = ''): int
+function normalizeDoneFilter(string $doneFilter): string
+{
+    return in_array($doneFilter, ['all', 'done', 'undone'], true) ? $doneFilter : 'all';
+}
+
+function fetchTotalCount(PDO $pdo, string $keyword = '', string $doneFilter = 'all'): int
 {
     $sql = 'SELECT COUNT(*) FROM curriculum_answer ca LEFT JOIN curriculum c ON c.id = ca.curriculum_id';
+    $conditions = [];
     $params = [];
 
     if ($keyword !== '') {
-        $sql .= " WHERE ca.line_name LIKE :kw OR ca.display_name LIKE :kw OR ca.answer_1 LIKE :kw OR ca.answer_2 LIKE :kw OR ca.q1 LIKE :kw OR ca.q2 LIKE :kw OR ca.q3 LIKE :kw OR ca.mail_address LIKE :kw OR ca.review LIKE :kw OR c.curriculum_name LIKE :kw";
+        $conditions[] = '(ca.line_name LIKE :kw OR ca.display_name LIKE :kw OR ca.answer_1 LIKE :kw OR ca.answer_2 LIKE :kw OR ca.q1 LIKE :kw OR ca.q2 LIKE :kw OR ca.q3 LIKE :kw OR ca.mail_address LIKE :kw OR ca.review LIKE :kw OR c.curriculum_name LIKE :kw)';
         $params['kw'] = '%' . $keyword . '%';
+    }
+
+    if ($doneFilter === 'done') {
+        $conditions[] = 'ca.`done` = 1';
+    } elseif ($doneFilter === 'undone') {
+        $conditions[] = '(ca.`done` = 0 OR ca.`done` IS NULL)';
+    }
+
+    if ($conditions !== []) {
+        $sql .= ' WHERE ' . implode(' AND ', $conditions);
     }
 
     $stmt = $pdo->prepare($sql);
@@ -84,7 +105,7 @@ function fetchTotalCount(PDO $pdo, string $keyword = ''): int
 /**
  * @return array<int, array<string, mixed>>
  */
-function fetchAnswers(PDO $pdo, int $limit, int $offset, string $keyword = ''): array
+function fetchAnswers(PDO $pdo, int $limit, int $offset, string $keyword = '', string $doneFilter = 'all'): array
 {
     $sql = <<<SQL
 SELECT
@@ -100,29 +121,39 @@ SELECT
     ca.q2,
     ca.q3,
     ca.mail_address,
-    ca.review
+    ca.review,
+    ca.`done`
 FROM curriculum_answer ca
 LEFT JOIN curriculum c ON c.id = ca.curriculum_id
 SQL;
 
+    $conditions = [];
     $params = [];
     if ($keyword !== '') {
-        $sql .= <<<SQL
- WHERE
-    ca.line_name LIKE :kw OR
-    ca.display_name LIKE :kw OR
-    ca.answer_1 LIKE :kw OR
-    ca.answer_2 LIKE :kw OR
-    ca.q1 LIKE :kw OR
-    ca.q2 LIKE :kw OR
-    ca.q3 LIKE :kw OR
-    ca.mail_address LIKE :kw OR
-    ca.review LIKE :kw OR
-    c.curriculum_name LIKE :kw
+        $conditions[] = <<<SQL
+(ca.line_name LIKE :kw OR
+ca.display_name LIKE :kw OR
+ca.answer_1 LIKE :kw OR
+ca.answer_2 LIKE :kw OR
+ca.q1 LIKE :kw OR
+ca.q2 LIKE :kw OR
+ca.q3 LIKE :kw OR
+ca.mail_address LIKE :kw OR
+ca.review LIKE :kw OR
+c.curriculum_name LIKE :kw)
 SQL;
         $params['kw'] = '%' . $keyword . '%';
     }
 
+    if ($doneFilter === 'done') {
+        $conditions[] = 'ca.`done` = 1';
+    } elseif ($doneFilter === 'undone') {
+        $conditions[] = '(ca.`done` = 0 OR ca.`done` IS NULL)';
+    }
+
+    if ($conditions !== []) {
+        $sql .= ' WHERE ' . implode(' AND ', $conditions);
+    }
     $sql .= <<<SQL
  ORDER BY ca.answer_date DESC
 LIMIT :limit OFFSET :offset
@@ -596,6 +627,50 @@ function handleUpdateReview(): void
     }
 }
 
+function updateDone(PDO $pdo, int $caId, bool $done): void
+{
+    $stmt = $pdo->prepare('UPDATE curriculum_answer SET `done` = :done WHERE ca_id = :ca_id');
+    $stmt->bindValue(':done', $done ? 1 : 0, PDO::PARAM_INT);
+    $stmt->bindValue(':ca_id', $caId, PDO::PARAM_INT);
+    $stmt->execute();
+
+    if ($stmt->rowCount() < 1) {
+        throw new RuntimeException('更新対象が見つかりません。');
+    }
+}
+
+function handleUpdateDone(): void
+{
+    header('Content-Type: application/json; charset=UTF-8');
+
+    try {
+        $caId = (int)($_POST['ca_id'] ?? 0);
+        $doneRaw = (string)($_POST['done'] ?? '');
+        if ($caId <= 0) {
+            throw new InvalidArgumentException('ca_id が不正です。');
+        }
+
+        if (!in_array($doneRaw, ['0', '1'], true)) {
+            throw new InvalidArgumentException('done が不正です。');
+        }
+
+        $done = $doneRaw === '1';
+        $pdo = createPdo();
+        updateDone($pdo, $caId, $done);
+
+        echo json_encode([
+            'ok' => true,
+            'ca_id' => $caId,
+            'done' => $done,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    } catch (Throwable $e) {
+        http_response_code(400);
+        echo json_encode([
+            'ok' => false,
+            'message' => $e->getMessage(),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+}
 function fetchPromptTemplates(PDO $pdo): array
 {
     $sql = <<<SQL
@@ -699,11 +774,14 @@ function listValue(array $row, string $key): string
     return trim((string)($row[$key] ?? ''));
 }
 
-function pageUrl(int $targetPage, string $keyword): string
+function pageUrl(int $targetPage, string $keyword, string $doneFilter): string
 {
     $params = ['page' => $targetPage];
     if ($keyword !== '') {
         $params['keyword'] = $keyword;
+    }
+    if ($doneFilter !== 'all') {
+        $params['done_filter'] = $doneFilter;
     }
 
     return '?' . http_build_query($params);
@@ -728,10 +806,18 @@ function pageUrl(int $targetPage, string $keyword): string
                 キーワード検索
                 <input type="text" name="keyword" value="<?= h($keyword); ?>" placeholder="名前・提出物・総評・カリキュラム名">
             </label>
+            <label>
+                完了状態
+                <select name="done_filter">
+                    <option value="all" <?= $doneFilter === 'all' ? 'selected' : ''; ?>>すべて</option>
+                    <option value="undone" <?= $doneFilter === 'undone' ? 'selected' : ''; ?>>未完了のみ</option>
+                    <option value="done" <?= $doneFilter === 'done' ? 'selected' : ''; ?>>完了のみ</option>
+                </select>
+            </label>
             <input type="hidden" name="page" value="1">
             <button type="submit">検索</button>
             <button type="button" id="openPromptTemplateModal">プロンプト編集</button>
-            <?php if ($keyword !== ''): ?>
+            <?php if ($keyword !== '' || $doneFilter !== 'all'): ?>
                 <a href="?" class="clear-link">クリア</a>
             <?php endif; ?>
         </form>
@@ -758,6 +844,7 @@ function pageUrl(int $targetPage, string $keyword): string
                             '提出物2' => listValue($row, 'answer_2'),
                             '総評' => $review !== '' ? $review : '（未設定）',
                         ];
+                        $isDone = (int)($row['done'] ?? 0) === 1;
                         ?>
                         <li class="answer-card" data-ca-id="<?= $caId; ?>">
                             <dl class="answer-items">
@@ -776,6 +863,10 @@ function pageUrl(int $targetPage, string $keyword): string
                                 <?php endforeach; ?>
                             </dl>
                             <div class="card-actions">
+                                <label class="done-toggle">
+                                    <input type="checkbox" class="js-done-checkbox" data-ca-id="<?= $caId; ?>" <?= $isDone ? 'checked' : ''; ?>>
+                                    完了
+                                </label>
                                 <button type="button" class="api-btn js-api-btn" data-ca-id="<?= $caId; ?>">API</button>
                             </div>
                         </li>
@@ -791,15 +882,15 @@ function pageUrl(int $targetPage, string $keyword): string
             ?>
 
             <?php if ($page > 1): ?>
-                <a href="<?= h(pageUrl($page - 1, $keyword)); ?>" class="pager">← 前へ</a>
+                <a href="<?= h(pageUrl($page - 1, $keyword, $doneFilter)); ?>" class="pager">← 前へ</a>
             <?php endif; ?>
 
             <?php for ($i = $start; $i <= $end; $i++): ?>
-                <a href="<?= h(pageUrl($i, $keyword)); ?>" class="pager <?= $i === $page ? 'is-active' : ''; ?>"><?= $i; ?></a>
+                <a href="<?= h(pageUrl($i, $keyword, $doneFilter)); ?>" class="pager <?= $i === $page ? 'is-active' : ''; ?>"><?= $i; ?></a>
             <?php endfor; ?>
 
             <?php if ($page < $totalPages): ?>
-                <a href="<?= h(pageUrl($page + 1, $keyword)); ?>" class="pager">次へ →</a>
+                <a href="<?= h(pageUrl($page + 1, $keyword, $doneFilter)); ?>" class="pager">次へ →</a>
             <?php endif; ?>
         </nav>
     <?php endif; ?>

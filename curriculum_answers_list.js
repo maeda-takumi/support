@@ -198,6 +198,44 @@
         });
     }
 
+
+    document.querySelectorAll('.js-done-checkbox').forEach((checkbox) => {
+        checkbox.addEventListener('change', async () => {
+            const caId = checkbox.dataset.caId;
+            if (!caId) return;
+
+            const nextDone = checkbox.checked;
+            checkbox.disabled = true;
+
+            try {
+                const params = new URLSearchParams();
+                params.set('action', 'update_done');
+                params.set('ca_id', caId);
+                params.set('done', nextDone ? '1' : '0');
+
+                const response = await fetch(window.location.pathname + window.location.search, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+                    },
+                    body: params.toString()
+                });
+
+                const data = await response.json();
+                if (!response.ok || !data.ok) {
+                    throw new Error(data.message || '完了状態の更新に失敗しました');
+                }
+
+                checkbox.checked = Boolean(data.done);
+            } catch (error) {
+                checkbox.checked = !nextDone;
+                const message = error instanceof Error ? error.message : '完了状態の更新に失敗しました';
+                alert(message);
+            } finally {
+                checkbox.disabled = false;
+            }
+        });
+    });
     document.querySelectorAll('.js-api-btn').forEach((button) => {
         button.addEventListener('click', async () => {
             const caId = button.dataset.caId;
