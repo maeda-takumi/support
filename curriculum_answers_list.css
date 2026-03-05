@@ -52,8 +52,8 @@ h1 {
 .list-wrap {
     border: var(--border);
     box-shadow: var(--shadow);
-    background: var(--card);
-    padding: 12px;
+    background: #000000;
+    padding: 3px;
 }
 
 .answer-list {
@@ -62,8 +62,9 @@ h1 {
     padding: 0;
     display: flex;
     grid-template-columns: repeat(auto-fit, minmax(520px, 1fr));
-    gap: 12px;
+    gap: 5px;
     flex-direction: column;
+
 }
 
 .answer-card {
