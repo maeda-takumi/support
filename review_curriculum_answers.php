@@ -46,7 +46,8 @@ function main(): int
     $errors = 0;
 
     foreach ($targets as $target) {
-        $answerId = (string)$target['answer_id'];
+        $answerId = (string)($target['answer_id'] ?? '');
+        $caId = (string)($target['ca_id'] ?? '');
         $answer1 = (string)($target['answer_1'] ?? '');
         $answer2 = (string)($target['answer_2'] ?? '');
         $curriculumId = (string)($target['curriculum_id'] ?? '');
@@ -62,16 +63,16 @@ function main(): int
                 throw new RuntimeException('Geminiの応答からreviewテキストを取得できませんでした');
             }
 
-            updateReview($pdo, $answerId, $review);
+            updateReview($pdo, $caId, $review);
             $updated++;
         } catch (Throwable $e) {
             $errors++;
-            logMessage('ERROR', sprintf('review生成失敗 answer_id=%s (%s)', $answerId, $e->getMessage()));
+            logMessage('ERROR', sprintf('review生成失敗 ca_id=%s answer_id=%s (%s)', $caId, $answerId, $e->getMessage()));
             try {
-                updateReview($pdo, $answerId, REVIEW_FALLBACK_MESSAGE);
-                logMessage('INFO', sprintf('固定文言でreviewを更新 answer_id=%s', $answerId));
+                updateReview($pdo, $caId, REVIEW_FALLBACK_MESSAGE);
+                logMessage('INFO', sprintf('固定文言でreviewを更新 ca_id=%s answer_id=%s', $caId, $answerId));
             } catch (Throwable $updateError) {
-                logMessage('ERROR', sprintf('固定文言reviewの更新失敗 answer_id=%s (%s)', $answerId, $updateError->getMessage()));
+                logMessage('ERROR', sprintf('固定文言reviewの更新失敗 ca_id=%s answer_id=%s (%s)', $caId, $answerId, $updateError->getMessage()));
             }
         }
     }
@@ -104,7 +105,7 @@ function createPdo(): PDO
  */
 function fetchReviewTargets(PDO $pdo): array
 {
-    $sql = "SELECT answer_id, curriculum_id, answer_1, answer_2 FROM curriculum_answer WHERE (review IS NULL OR TRIM(review) = '') ORDER BY answer_date ASC";
+    $sql = "SELECT ca_id, answer_id, curriculum_id, answer_1, answer_2 FROM curriculum_answer WHERE (review IS NULL OR TRIM(review) = '') ORDER BY answer_date ASC";
     $stmt = $pdo->query($sql);
     $rows = $stmt->fetchAll();
 
@@ -445,12 +446,12 @@ function extractGeminiText(array $data): string
     return '';
 }
 
-function updateReview(PDO $pdo, string $answerId, string $review): void
+function updateReview(PDO $pdo, string $caId, string $review): void
 {
-    $stmt = $pdo->prepare('UPDATE curriculum_answer SET review=:review WHERE answer_id=:answer_id');
+    $stmt = $pdo->prepare('UPDATE curriculum_answer SET review=:review WHERE ca_id=:ca_id');
     $stmt->execute([
         'review' => $review,
-        'answer_id' => $answerId,
+        'ca_id' => $caId,
     ]);
 }
 
