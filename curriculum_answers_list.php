@@ -15,8 +15,21 @@ const MEDIA_DOWNLOAD_MAX_BYTES = 15 * 1024 * 1024;
 const MEDIA_MAX_URLS = 4;
 const PER_PAGE = 20;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') === 'update_review') {
+
+$requestMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+$requestAction = (string)($_POST['action'] ?? $_GET['action'] ?? '');
+
+if ($requestMethod === 'POST' && $requestAction === 'update_review') {
     handleUpdateReview();
+    exit;
+}
+if ($requestMethod === 'POST' && $requestAction === 'update_prompt_template') {
+    handleUpdatePromptTemplate();
+    exit;
+}
+
+if ($requestMethod === 'GET' && $requestAction === 'list_prompt_templates') {
+    handleListPromptTemplates();
     exit;
 }
 
@@ -583,6 +596,99 @@ function handleUpdateReview(): void
     }
 }
 
+function fetchPromptTemplates(PDO $pdo): array
+{
+    $sql = <<<SQL
+SELECT
+    p.id,
+    p.curriculum_id,
+    c.curriculum_name,
+    p.version,
+    p.template_body,
+    p.status,
+    p.updated_at
+FROM curriculum_prompt_template p
+LEFT JOIN curriculum c ON c.id = p.curriculum_id
+ORDER BY p.curriculum_id ASC, p.version DESC, p.updated_at DESC
+SQL;
+
+    $stmt = $pdo->query($sql);
+    $rows = $stmt->fetchAll();
+    return is_array($rows) ? $rows : [];
+}
+
+function handleListPromptTemplates(): void
+{
+    header('Content-Type: application/json; charset=UTF-8');
+
+    try {
+        $pdo = createPdo();
+        $rows = fetchPromptTemplates($pdo);
+
+        echo json_encode([
+            'ok' => true,
+            'templates' => $rows,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    } catch (Throwable $e) {
+        http_response_code(400);
+        echo json_encode([
+            'ok' => false,
+            'message' => $e->getMessage(),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+}
+
+function updatePromptTemplate(PDO $pdo, int $templateId, string $templateBody): void
+{
+    validatePromptTemplate($templateBody);
+
+    $stmt = $pdo->prepare(
+        'UPDATE curriculum_prompt_template '
+        . 'SET template_body = :template_body, updated_by = :updated_by '
+        . 'WHERE id = :id'
+    );
+    $stmt->execute([
+        'template_body' => $templateBody,
+        'updated_by' => 'curriculum_answers_list.php',
+        'id' => $templateId,
+    ]);
+
+    if ($stmt->rowCount() < 1) {
+        throw new RuntimeException('更新対象が見つかりません。');
+    }
+}
+
+function handleUpdatePromptTemplate(): void
+{
+    header('Content-Type: application/json; charset=UTF-8');
+
+    try {
+        $templateId = (int)($_POST['template_id'] ?? 0);
+        $templateBody = trim((string)($_POST['template_body'] ?? ''));
+
+        if ($templateId <= 0) {
+            throw new InvalidArgumentException('template_id が不正です。');
+        }
+        if ($templateBody === '') {
+            throw new InvalidArgumentException('template_body は必須です。');
+        }
+
+        $pdo = createPdo();
+        updatePromptTemplate($pdo, $templateId, $templateBody);
+
+        echo json_encode([
+            'ok' => true,
+            'template_id' => $templateId,
+            'template_body' => $templateBody,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    } catch (Throwable $e) {
+        http_response_code(400);
+        echo json_encode([
+            'ok' => false,
+            'message' => $e->getMessage(),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+}
 function h(?string $value): string
 {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
@@ -624,6 +730,7 @@ function pageUrl(int $targetPage, string $keyword): string
             </label>
             <input type="hidden" name="page" value="1">
             <button type="submit">検索</button>
+            <button type="button" id="openPromptTemplateModal">プロンプト編集</button>
             <?php if ($keyword !== ''): ?>
                 <a href="?" class="clear-link">クリア</a>
             <?php endif; ?>
@@ -710,6 +817,24 @@ function pageUrl(int $targetPage, string $keyword): string
     </div>
 </div>
 
+<div class="modal" id="promptTemplateModal" aria-hidden="true">
+    <div class="modal__overlay js-close-prompt-template-modal"></div>
+    <div class="modal__content" role="dialog" aria-modal="true" aria-labelledby="promptTemplateModalTitle">
+        <h2 id="promptTemplateModalTitle">プロンプトテンプレート編集</h2>
+        <div class="prompt-template-edit">
+            <label class="prompt-template-label" for="promptTemplateSelect">テンプレート選択</label>
+            <select id="promptTemplateSelect"></select>
+            <p id="promptTemplateMeta" class="prompt-template-meta"></p>
+            <label class="prompt-template-label" for="promptTemplateBody">template_body</label>
+            <textarea id="promptTemplateBody" rows="12"></textarea>
+            <p id="promptTemplateMessage" class="prompt-template-message"></p>
+        </div>
+        <div class="modal__actions">
+            <button type="button" class="api-btn" id="savePromptTemplateButton">保存</button>
+            <button type="button" class="close-btn js-close-prompt-template-modal">閉じる</button>
+        </div>
+    </div>
+</div>
 <script src="./curriculum_answers_list.js?v=<?= time(); ?>"></script>
 </body>
 </html>
