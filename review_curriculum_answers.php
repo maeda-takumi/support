@@ -13,6 +13,7 @@ const GEMINI_RETRY_MAX_OUTPUT_TOKENS = 8192;
 const MEDIA_DOWNLOAD_TIMEOUT = 60;
 const MEDIA_DOWNLOAD_MAX_BYTES = 15 * 1024 * 1024;
 const MEDIA_MAX_URLS = 4;
+const REVIEW_FALLBACK_MESSAGE = '例外です（自動レビューの生成に失敗しました）';
 
 function main(): int
 {
@@ -66,6 +67,12 @@ function main(): int
         } catch (Throwable $e) {
             $errors++;
             logMessage('ERROR', sprintf('review生成失敗 answer_id=%s (%s)', $answerId, $e->getMessage()));
+            try {
+                updateReview($pdo, $answerId, REVIEW_FALLBACK_MESSAGE);
+                logMessage('INFO', sprintf('固定文言でreviewを更新 answer_id=%s', $answerId));
+            } catch (Throwable $updateError) {
+                logMessage('ERROR', sprintf('固定文言reviewの更新失敗 answer_id=%s (%s)', $answerId, $updateError->getMessage()));
+            }
         }
     }
 
