@@ -19,6 +19,11 @@ const PER_PAGE = 20;
 $requestMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $requestAction = (string)($_POST['action'] ?? $_GET['action'] ?? '');
 
+if ($requestMethod === 'GET') {
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+}
 if ($requestMethod === 'POST' && $requestAction === 'update_review') {
     handleUpdateReview();
     exit;
@@ -846,7 +851,7 @@ function pageUrl(int $targetPage, string $keyword, string $doneFilter): string
                         ];
                         $isDone = (int)($row['done'] ?? 0) === 1;
                         ?>
-                        <li class="answer-card" data-ca-id="<?= $caId; ?>">
+                        <li class="answer-card <?= $isDone ? 'is-done' : ''; ?>" data-ca-id="<?= $caId; ?>">
                             <dl class="answer-items">
                                 <?php foreach ($items as $label => $value): ?>
                                     <div class="answer-item">

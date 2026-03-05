@@ -95,6 +95,9 @@ h1 {
     gap: 15px;
 }
 
+.answer-card.is-done {
+    background: #5f5f5f;
+}
 .answer-items {
     margin: 0;
     display: flex;

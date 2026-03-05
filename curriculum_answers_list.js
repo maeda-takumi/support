@@ -205,6 +205,7 @@
             if (!caId) return;
 
             const nextDone = checkbox.checked;
+            const card = checkbox.closest('.answer-card');
             checkbox.disabled = true;
 
             try {
@@ -227,8 +228,14 @@
                 }
 
                 checkbox.checked = Boolean(data.done);
+                if (card) {
+                    card.classList.toggle('is-done', checkbox.checked);
+                }
             } catch (error) {
                 checkbox.checked = !nextDone;
+                if (card) {
+                    card.classList.toggle('is-done', checkbox.checked);
+                }
                 const message = error instanceof Error ? error.message : '完了状態の更新に失敗しました';
                 alert(message);
             } finally {
