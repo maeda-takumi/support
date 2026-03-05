@@ -43,9 +43,10 @@ h1 {
 }
 
 .search-form input[type="text"] {
-    min-width: 280px;
+    min-width: 320px;
     padding: 8px;
     border: 2px solid var(--ink);
+    font-size: 16px;
 }
 
 .list-wrap {
@@ -59,26 +60,32 @@ h1 {
     list-style: none;
     margin: 0;
     padding: 0;
-    display: grid;
+    display: flex;
     grid-template-columns: repeat(auto-fit, minmax(520px, 1fr));
     gap: 12px;
+    flex-direction: column;
 }
 
 .answer-card {
     border: 2px solid var(--ink);
     padding: 12px;
     background: #fff;
+    display: flex;
+    flex-direction: row;
+    gap: 15px;
 }
 
 .answer-items {
     margin: 0;
-    display: grid;
+    display: flex;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
+    flex-direction: row;
 }
 
 .answer-item {
     margin: 0;
+    width: 40%;
 }
 
 
@@ -89,27 +96,35 @@ h1 {
 
 .answer-item dd {
     margin: 0;
+    min-width: 0;
 }
 
 .value-btn {
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
     text-align: left;
     background: #f6f6f6;
     border: 2px solid var(--ink);
     padding: 8px;
     line-height: 1.5;
-    min-height: 3.5em;
-    max-height: 7em;
+    min-height: 40px;
+    max-height: 40px;
     overflow: hidden;
     cursor: pointer;
     display: -webkit-box;
     -webkit-line-clamp: 4;
     -webkit-box-orient: vertical;
-    word-break: break-word;
+    overflow-wrap: anywhere;
+    word-break: break-all;
+    font-size: 14px;
 }
 
 .card-actions {
-    margin-top: 10px;
+    /* margin-top: 10px; */
+    display: flex;
+    margin: auto;
+    min-width: 70px;
 }
 
 .api-btn, .pager, .copy-btn, .close-btn, .search-form button, .clear-link {
@@ -126,6 +141,8 @@ h1 {
 
 .api-btn {
     background: #c7ff79;
+    min-width: 70px;
+    padding: 8px 0px;
 }
 
 .api-btn:disabled {
@@ -188,6 +205,7 @@ h1 {
     background: #f7f7f7;
     max-height: 50vh;
     overflow: auto;
+    font-size: 16px;
 }
 
 .modal__actions {
