@@ -115,7 +115,6 @@ h1 {
 .answer-item dt {
     font-weight: 700;
     margin-bottom: 4px;
-    font-size: 14px;
 }
 
 .answer-item dd {
@@ -311,8 +310,4 @@ h1 {
     .search-form input[type="text"] { min-width: 180px; width: 100%; }
     .answer-list { grid-template-columns: 1fr; }
     .answer-items { grid-template-columns: 1fr; }
-}
-
-@media (max-width: 1000px) {
-    .answer-item dt {font-size:10px;}
 }
