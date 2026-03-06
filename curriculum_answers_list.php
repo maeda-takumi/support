@@ -13,6 +13,11 @@ const GEMINI_RETRY_MAX_OUTPUT_TOKENS = 8192;
 const MEDIA_DOWNLOAD_TIMEOUT = 60;
 const MEDIA_DOWNLOAD_MAX_BYTES = 100 * 1024 * 1024;
 const MEDIA_MAX_URLS = 4;
+const NOTION_MAX_URLS = 4;
+const NOTION_CAPTURE_DIR = __DIR__ . '/captures';
+const CLOUDFLARE_API_BASE = 'https://api.cloudflare.com/client/v4/accounts';
+const CLOUDFLARE_CAPTURE_TIMEOUT = 180;
+const CLOUDFLARE_DEFAULT_WAIT_TIMEOUT = 8000;
 const PER_PAGE = 20;
 
 
@@ -181,14 +186,83 @@ function containsUrl(string $text): bool
     return preg_match('/https?:\/\/|www\./iu', $text) === 1;
 }
 
-function generateReview(PDO $pdo, string $curriculumId, string $answer1, string $answer2, string $apiKey): string
+/**
+ * @return array{review:string, notion_pdf:?string}
+ */
+function generateReview(PDO $pdo, int $caId, string $curriculumId, string $answer1, string $answer2, string $apiKey): array
 {
     $mediaUrls = extractMediaUrls([$answer1, $answer2]);
-    if ($mediaUrls !== []) {
-        return generateReviewWithMediaUrls($pdo, $curriculumId, $answer1, $answer2, $mediaUrls, $apiKey);
+    $notionUrls = extractNotionUrls([$answer1, $answer2]);
+    if ($notionUrls !== [] && $mediaUrls !== []) {
+        throw new RuntimeException('Notion URLと画像/動画URLが混在しているため処理できません');
     }
 
-    return generateTextReview($pdo, $curriculumId, $answer1, $answer2, $apiKey);
+    if ($notionUrls !== []) {
+        return generateReviewWithNotionUrls($pdo, $caId, $curriculumId, $answer1, $answer2, $notionUrls, $apiKey);
+    }
+    if ($mediaUrls !== []) {
+        return [
+            'review' => generateReviewWithMediaUrls($pdo, $curriculumId, $answer1, $answer2, $mediaUrls, $apiKey),
+            'notion_pdf' => null,
+        ];
+    }
+
+    return [
+        'review' => generateTextReview($pdo, $curriculumId, $answer1, $answer2, $apiKey),
+        'notion_pdf' => null,
+    ];
+}
+
+/**
+ * @param array<int, string> $notionUrls
+ * @return array{review:string, notion_pdf:?string}
+ */
+function generateReviewWithNotionUrls(PDO $pdo, int $caId, string $curriculumId, string $answer1, string $answer2, array $notionUrls, string $apiKey): array
+{
+    $url = sprintf(
+        '%s/%s:generateContent?key=%s',
+        GEMINI_API_BASE,
+        rawurlencode(GEMINI_MEDIA_MODEL),
+        rawurlencode($apiKey)
+    );
+
+    $prompt = buildReviewPrompt($pdo, $curriculumId, $answer1, $answer2);
+    $parts = [
+        ['text' => $prompt],
+    ];
+
+    $savedFiles = [];
+    $captureErrors = [];
+
+    foreach ($notionUrls as $index => $notionUrl) {
+        try {
+            $capture = captureNotionPdf($notionUrl, $caId, $index + 1);
+            $savedFiles[] = $capture['file_name'];
+            $parts[] = [
+                'inlineData' => [
+                    'mimeType' => 'application/pdf',
+                    'data' => base64_encode($capture['binary']),
+                ],
+            ];
+        } catch (Throwable $e) {
+            $captureErrors[] = sprintf('Notion URL取得失敗: %s (%s)', $notionUrl, $e->getMessage());
+        }
+    }
+
+    if (count($parts) === 1) {
+        $review = generateTextReview($pdo, $curriculumId, $answer1, $answer2, $apiKey);
+    } else {
+        $review = requestGeminiReviewText($url, $parts);
+    }
+
+    if ($captureErrors !== []) {
+        $review .= "\n\n" . implode("\n", $captureErrors);
+    }
+
+    return [
+        'review' => trim($review),
+        'notion_pdf' => $savedFiles === [] ? null : json_encode($savedFiles, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+    ];
 }
 
 function generateTextReview(PDO $pdo, string $curriculumId, string $answer1, string $answer2, string $apiKey): string
@@ -350,7 +424,7 @@ function extractMediaUrls(array $texts): array
         preg_match_all("/https?:\\/\\/[^\\s\"'<>]+/iu", $text, $matches);
         foreach ($matches[0] ?? [] as $rawUrl) {
             $url = rtrim((string)$rawUrl, '.,);:!?]');
-            if ($url === '' || !isAllowedMediaUrl($url)) {
+            if ($url === '' || isNotionUrl($url) || !isAllowedMediaUrl($url)) {
                 continue;
             }
             $urls[$url] = $url;
@@ -363,6 +437,49 @@ function extractMediaUrls(array $texts): array
     return array_values($urls);
 }
 
+/**
+ * @param array<int, string> $texts
+ * @return array<int, string>
+ */
+function extractNotionUrls(array $texts): array
+{
+    $urls = [];
+    foreach ($texts as $text) {
+        if (!is_string($text) || trim($text) === '') {
+            continue;
+        }
+
+        preg_match_all("/https?:\/\/[^\s\"'<>]+/iu", $text, $matches);
+        foreach ($matches[0] ?? [] as $rawUrl) {
+            $url = rtrim((string)$rawUrl, '.,);:!?]');
+            if ($url === '' || !isNotionUrl($url) || !isAllowedMediaUrl($url)) {
+                continue;
+            }
+
+            $urls[$url] = $url;
+            if (count($urls) >= NOTION_MAX_URLS) {
+                break 2;
+            }
+        }
+    }
+
+    return array_values($urls);
+}
+
+function isNotionUrl(string $url): bool
+{
+    $parts = parse_url($url);
+    if (!is_array($parts)) {
+        return false;
+    }
+
+    $host = strtolower((string)($parts['host'] ?? ''));
+    if ($host === '') {
+        return false;
+    }
+
+    return str_contains($host, 'notion.so') || str_contains($host, 'notion.site');
+}
 function isAllowedMediaUrl(string $url): bool
 {
     $parts = parse_url($url);
@@ -569,13 +686,91 @@ function httpRequest(string $method, string $url, array $headers = [], ?string $
     ];
 }
 
-function updateReview(PDO $pdo, int $caId, string $review): void
+function updateReview(PDO $pdo, int $caId, string $review, ?string $notionPdf): void
 {
-    $stmt = $pdo->prepare('UPDATE curriculum_answer SET review = :review WHERE ca_id = :ca_id');
+    $stmt = $pdo->prepare('UPDATE curriculum_answer SET review = :review, notion_pdf = :notion_pdf WHERE ca_id = :ca_id');
     $stmt->execute([
         'review' => $review,
+        'notion_pdf' => $notionPdf,
         'ca_id' => $caId,
     ]);
+}
+
+/**
+ * @return array{file_name:string, binary:string}
+ */
+function captureNotionPdf(string $notionUrl, int $caId, int $sequence): array
+{
+    $apiToken = trim((string)getenv('CLOUDFLARE_BROWSER_RENDERING_API_TOKEN'));
+    $accountId = trim((string)getenv('CLOUDFLARE_ACCOUNT_ID'));
+
+    if ($apiToken === '' || $accountId === '') {
+        throw new RuntimeException('Cloudflare Browser Renderingの認証情報が不足しています');
+    }
+
+    if (!is_dir(NOTION_CAPTURE_DIR) && !mkdir(NOTION_CAPTURE_DIR, 0755, true) && !is_dir(NOTION_CAPTURE_DIR)) {
+        throw new RuntimeException('capturesディレクトリの作成に失敗しました');
+    }
+
+    $endpoint = sprintf('%s/%s/browser-rendering/pdf', CLOUDFLARE_API_BASE, rawurlencode($accountId));
+    $payload = [
+        'url' => $notionUrl,
+        'gotoOptions' => [
+            'waitUntil' => 'networkidle2',
+            'timeout' => 60000,
+        ],
+        'waitForTimeout' => CLOUDFLARE_DEFAULT_WAIT_TIMEOUT,
+        'actionTimeout' => 120000,
+        'pdfOptions' => [
+            'format' => 'a4',
+            'printBackground' => true,
+            'preferCSSPageSize' => true,
+            'landscape' => false,
+        ],
+    ];
+
+    $ch = curl_init($endpoint);
+    if ($ch === false) {
+        throw new RuntimeException('cURL初期化に失敗しました');
+    }
+
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => [
+            'Authorization: Bearer ' . $apiToken,
+            'Content-Type: application/json',
+        ],
+        CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+        CURLOPT_TIMEOUT => CLOUDFLARE_CAPTURE_TIMEOUT,
+    ]);
+
+    $response = curl_exec($ch);
+    $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($response === false || $curlError !== '') {
+        throw new RuntimeException('Notion PDF取得のHTTP通信に失敗しました: ' . $curlError);
+    }
+
+    if ($httpCode !== 200) {
+        if ($httpCode === 413) {
+            throw new RuntimeException('Notion PDF取得サイズが上限を超えました');
+        }
+        throw new RuntimeException(sprintf('Notion PDF取得でHTTPエラー status=%d body=%s', $httpCode, $response));
+    }
+
+    $fileName = sprintf('notion_%d_%02d_%s.pdf', $caId, $sequence, date('Ymd_His'));
+    $savePath = NOTION_CAPTURE_DIR . '/' . $fileName;
+    if (file_put_contents($savePath, $response) === false) {
+        throw new RuntimeException('Notion PDF保存に失敗しました');
+    }
+
+    return [
+        'file_name' => $fileName,
+        'binary' => $response,
+    ];
 }
 
 function handleUpdateReview(): void
@@ -611,12 +806,13 @@ function handleUpdateReview(): void
         }
 
 
-        $review = generateReview($pdo, $curriculumId, $answer1, $answer2, $apiKey);
+        $result = generateReview($pdo, $caId, $curriculumId, $answer1, $answer2, $apiKey);
+        $review = $result['review'];
         if ($review === '') {
             throw new RuntimeException('総評の生成に失敗しました。');
         }
 
-        updateReview($pdo, $caId, $review);
+        updateReview($pdo, $caId, $review, $result['notion_pdf']);
 
         echo json_encode([
             'ok' => true,
