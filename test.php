@@ -1,38 +1,41 @@
 <?php
 
-$targetUrl = 'https://www.notion.so/30fcb0887e8780c3a2a8fb8a17daf831?source=copy_link';
+$targetUrl = 'https://voracious-cherry-ec4.notion.site/NATURE-POP-99588b16ab9847369109d64584a5ecdd?pvs=143';
 $apiToken  = '8wbSs_0XMkImX7dKiV8CkgBLeT4egrhMFdZ9c19j';
 $accountId = 'b637ccd8d4232960555b263a9390593e';
 
+// 保存先
 $saveDir = __DIR__ . '/captures';
 if (!is_dir($saveDir)) {
     mkdir($saveDir, 0755, true);
 }
 
-$fileName = 'capture_' . date('Ymd_His') . '.png';
+// PDFファイル名
+$fileName = 'capture_' . date('Ymd_His') . '.pdf';
 $savePath = $saveDir . '/' . $fileName;
 
-$endpoint = "https://api.cloudflare.com/client/v4/accounts/{$accountId}/browser-rendering/screenshot";
+// PDFエンドポイント
+$endpoint = "https://api.cloudflare.com/client/v4/accounts/{$accountId}/browser-rendering/pdf";
 
+// NotionみたいなJS多めページ向けに少し長めに待つ
 $postData = [
     'url' => $targetUrl,
 
-    // ページ読み込み待ち設定
     'gotoOptions' => [
         'waitUntil' => 'networkidle2',
         'timeout'   => 60000
     ],
 
-    // 読み込み後にさらに少し待つ
-    'waitForTimeout' => 5000,
+    'waitForTimeout' => 8000,
+    'actionTimeout'  => 120000,
 
-    // スクショ設定
-    'screenshotOptions' => [
-        'fullPage' => true
-    ],
-
-    // スクショ処理自体の待機上限
-    'actionTimeout' => 120000
+    // PDF設定
+    'pdfOptions' => [
+        'format' => 'a4',
+        'printBackground' => true,
+        'preferCSSPageSize' => true,
+        'landscape' => false
+    ]
 ];
 
 $ch = curl_init($endpoint);
@@ -61,7 +64,8 @@ if ($httpCode !== 200) {
 }
 
 if (file_put_contents($savePath, $response) === false) {
-    exit('画像保存に失敗しました');
+    exit('PDF保存に失敗しました');
 }
 
-echo "保存完了: " . $savePath;
+echo "保存完了\n";
+echo "保存先: " . $savePath . "\n";
