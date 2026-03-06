@@ -580,11 +580,11 @@ function updateReview(PDO $pdo, string $caId, string $review, ?string $notionPdf
  */
 function captureNotionPdf(string $notionUrl, string $caId, int $sequence): array
 {
-    $apiToken = trim((string)getenv('CLOUDFLARE_BROWSER_RENDERING_API_TOKEN'));
-    $accountId = trim((string)getenv('CLOUDFLARE_ACCOUNT_ID'));
+    $apiToken = trim((string)(getenv('CLOUDFLARE_BROWSER_RENDERING_API_TOKEN') ?: (defined('CLOUDFLARE_BROWSER_RENDERING_API_TOKEN') ? CLOUDFLARE_BROWSER_RENDERING_API_TOKEN : '')));
+    $accountId = trim((string)(getenv('CLOUDFLARE_ACCOUNT_ID') ?: (defined('CLOUDFLARE_ACCOUNT_ID') ? CLOUDFLARE_ACCOUNT_ID : '')));
 
     if ($apiToken === '' || $accountId === '') {
-        throw new RuntimeException('Cloudflare Browser Renderingの認証情報が不足しています');
+        throw new RuntimeException('Cloudflare Browser Renderingの認証情報が不足しています（環境変数またはconfig.phpを確認してください）');
     }
 
     if (!is_dir(NOTION_CAPTURE_DIR) && !mkdir(NOTION_CAPTURE_DIR, 0755, true) && !is_dir(NOTION_CAPTURE_DIR)) {
