@@ -193,18 +193,9 @@ function generateReview(PDO $pdo, int $caId, string $curriculumId, string $answe
 {
     $mediaUrls = extractMediaUrls([$answer1, $answer2]);
     $notionUrls = extractNotionUrls([$answer1, $answer2]);
-    if ($notionUrls !== [] && $mediaUrls !== []) {
-        throw new RuntimeException('Notion URLと画像/動画URLが混在しているため処理できません');
-    }
 
-    if ($notionUrls !== []) {
-        return generateReviewWithNotionUrls($pdo, $caId, $curriculumId, $answer1, $answer2, $notionUrls, $apiKey);
-    }
-    if ($mediaUrls !== []) {
-        return [
-            'review' => generateReviewWithMediaUrls($pdo, $curriculumId, $answer1, $answer2, $mediaUrls, $apiKey),
-            'notion_pdf' => null,
-        ];
+    if ($notionUrls !== [] || $mediaUrls !== []) {
+        return generateReviewWithAttachments($pdo, $caId, $curriculumId, $answer1, $answer2, $notionUrls, $mediaUrls, $apiKey);
     }
 
     return [
@@ -215,9 +206,10 @@ function generateReview(PDO $pdo, int $caId, string $curriculumId, string $answe
 
 /**
  * @param array<int, string> $notionUrls
+ * @param array<int, string> $mediaUrls
  * @return array{review:string, notion_pdf:?string}
  */
-function generateReviewWithNotionUrls(PDO $pdo, int $caId, string $curriculumId, string $answer1, string $answer2, array $notionUrls, string $apiKey): array
+function generateReviewWithAttachments(PDO $pdo, int $caId, string $curriculumId, string $answer1, string $answer2, array $notionUrls, array $mediaUrls, string $apiKey): array
 {
     $url = sprintf(
         '%s/%s:generateContent?key=%s',
@@ -232,33 +224,42 @@ function generateReviewWithNotionUrls(PDO $pdo, int $caId, string $curriculumId,
     ];
 
     $savedFiles = [];
-    $captureErrors = [];
 
     foreach ($notionUrls as $index => $notionUrl) {
         try {
             $capture = captureNotionPdf($notionUrl, $caId, $index + 1);
-            $savedFiles[] = $capture['file_name'];
-            $parts[] = [
-                'inlineData' => [
-                    'mimeType' => 'application/pdf',
-                    'data' => base64_encode($capture['binary']),
-                ],
-            ];
         } catch (Throwable $e) {
-            $captureErrors[] = sprintf('Notion URL取得失敗: %s (%s)', $notionUrl, $e->getMessage());
+            throw new RuntimeException(sprintf('Notion PDF化に失敗しました: %s (%s)', $notionUrl, $e->getMessage()));
         }
+        $savedFiles[] = $capture['file_name'];
+        $parts[] = [
+            'inlineData' => [
+                'mimeType' => 'application/pdf',
+                'data' => base64_encode($capture['binary']),
+            ],
+        ];
+    }
+
+    foreach ($mediaUrls as $mediaUrl) {
+        try {
+            $media = downloadMediaForGemini($mediaUrl);
+        } catch (Throwable $e) {
+            throw new RuntimeException(sprintf('画像/動画URLの処理に失敗しました: %s (%s)', $mediaUrl, $e->getMessage()));
+        }
+
+        $parts[] = [
+            'inlineData' => [
+                'mimeType' => $media['mime_type'],
+                'data' => base64_encode($media['data']),
+            ],
+        ];
     }
 
     if (count($parts) === 1) {
-        $review = generateTextReview($pdo, $curriculumId, $answer1, $answer2, $apiKey);
-    } else {
-        $review = requestGeminiReviewText($url, $parts);
+        throw new RuntimeException('有効な提出物URLが見つかりませんでした（拡張子ベースで画像/動画URLを判定しています）');
     }
 
-    if ($captureErrors !== []) {
-        $review .= "\n\n" . implode("\n", $captureErrors);
-    }
-
+    $review = requestGeminiReviewText($url, $parts);
     return [
         'review' => trim($review),
         'notion_pdf' => $savedFiles === [] ? null : json_encode($savedFiles, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
@@ -282,37 +283,6 @@ function generateTextReview(PDO $pdo, string $curriculumId, string $answer1, str
 
     return requestGeminiReviewText($url, $parts);
 
-}
-
-/**
- * @param array<int, string> $mediaUrls
- */
-function generateReviewWithMediaUrls(PDO $pdo, string $curriculumId, string $answer1, string $answer2, array $mediaUrls, string $apiKey): string
-{
-    $url = sprintf(
-        '%s/%s:generateContent?key=%s',
-        GEMINI_API_BASE,
-        rawurlencode(GEMINI_MEDIA_MODEL),
-        rawurlencode($apiKey)
-    );
-
-    $prompt = buildReviewPrompt($pdo, $curriculumId, $answer1, $answer2);
-    $parts = [
-        ['text' => $prompt],
-    ];
-
-    foreach ($mediaUrls as $mediaUrl) {
-        $media = downloadMediaForGemini($mediaUrl);
-        $parts[] = [
-            'inlineData' => [
-                'mimeType' => $media['mime_type'],
-                'data' => base64_encode($media['data']),
-            ],
-        ];
-    }
-
-
-    return requestGeminiReviewText($url, $parts);
 }
 
 /**
@@ -424,7 +394,7 @@ function extractMediaUrls(array $texts): array
         preg_match_all("/https?:\\/\\/[^\\s\"'<>]+/iu", $text, $matches);
         foreach ($matches[0] ?? [] as $rawUrl) {
             $url = rtrim((string)$rawUrl, '.,);:!?]');
-            if ($url === '' || isNotionUrl($url) || !isAllowedMediaUrl($url)) {
+            if ($url === '' || isNotionUrl($url) || !hasSupportedMediaExtension($url) || !isAllowedMediaUrl($url)) {
                 continue;
             }
             $urls[$url] = $url;
@@ -436,6 +406,28 @@ function extractMediaUrls(array $texts): array
 
     return array_values($urls);
 }
+
+function hasSupportedMediaExtension(string $url): bool
+{
+    $parts = parse_url($url);
+    if (!is_array($parts)) {
+        return false;
+    }
+
+    $path = (string)($parts['path'] ?? '');
+    $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+    if ($extension === '') {
+        return false;
+    }
+
+    $allowedExtensions = [
+        'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'heic', 'heif',
+        'mp4', 'mov', 'webm', 'm4v', 'avi', 'mkv', 'mpeg', 'mpg',
+    ];
+
+    return in_array($extension, $allowedExtensions, true);
+}
+
 
 /**
  * @param array<int, string> $texts
