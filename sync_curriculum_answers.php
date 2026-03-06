@@ -397,7 +397,7 @@ function httpRequest(string $method, string $url, array $headers = [], ?string $
 
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 60);
     if ($headers !== []) {
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
     }

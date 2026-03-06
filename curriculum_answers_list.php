@@ -10,7 +10,7 @@ const GEMINI_TEXT_MODEL = 'gemma-3-27b-it';
 const GEMINI_MEDIA_MODEL = 'gemini-3.1-flash-lite-preview';
 const GEMINI_INITIAL_MAX_OUTPUT_TOKENS = 4096;
 const GEMINI_RETRY_MAX_OUTPUT_TOKENS = 8192;
-const MEDIA_DOWNLOAD_TIMEOUT = 60;
+const MEDIA_DOWNLOAD_TIMEOUT = 100;
 const MEDIA_DOWNLOAD_MAX_BYTES = 100 * 1024 * 1024;
 const MEDIA_MAX_URLS = 4;
 const NOTION_MAX_URLS = 4;
@@ -650,7 +650,7 @@ function httpRequest(string $method, string $url, array $headers = [], ?string $
 
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 100);
 
     if ($headers !== []) {
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
@@ -709,7 +709,7 @@ function captureNotionPdf(string $notionUrl, int $caId, int $sequence): array
         'url' => $notionUrl,
         'gotoOptions' => [
             'waitUntil' => 'networkidle2',
-            'timeout' => 60000,
+            'timeout' => 100000,
         ],
         'waitForTimeout' => CLOUDFLARE_DEFAULT_WAIT_TIMEOUT,
         'actionTimeout' => 120000,
