@@ -2,6 +2,7 @@
     const modal = document.getElementById('reviewModal');
     const modalTitle = document.getElementById('modalTitle');
     const modalReviewText = document.getElementById('modalReviewText');
+    const modalMedia = document.getElementById('modalMedia');
     const copyModalTextButton = document.querySelector('.js-copy-modal-text');
 
     const openPromptTemplateModalButton = document.getElementById('openPromptTemplateModal');
@@ -13,18 +14,118 @@
     const savePromptTemplateButton = document.getElementById('savePromptTemplateButton');
     let promptTemplates = [];
 
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'avif'];
+    const videoExtensions = ['mp4', 'webm', 'ogg', 'mov', 'm4v'];
+
+    const asHttpUrl = (value) => {
+        const trimmed = (value || '').trim();
+        if (!trimmed) return null;
+
+        try {
+            const parsed = new URL(trimmed);
+            if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+                return parsed;
+            }
+            return null;
+        } catch (error) {
+            return null;
+        }
+    };
+
+    const detectMediaType = (value) => {
+        const parsedUrl = asHttpUrl(value);
+        if (!parsedUrl) return null;
+
+        const path = parsedUrl.pathname || '';
+        const extension = path.includes('.') ? path.split('.').pop().toLowerCase() : '';
+
+        if (imageExtensions.includes(extension)) return 'image';
+        if (videoExtensions.includes(extension)) return 'video';
+        return 'image';
+    };
+
+    const resetModalContent = () => {
+        if (modalReviewText) {
+            modalReviewText.hidden = false;
+            modalReviewText.textContent = '';
+        }
+
+        if (modalMedia) {
+            modalMedia.hidden = true;
+            modalMedia.replaceChildren();
+        }
+
+        if (copyModalTextButton) {
+            copyModalTextButton.disabled = false;
+        }
+    };
+
+    const showTextInModal = (text) => {
+        if (!modalReviewText) return;
+        modalReviewText.hidden = false;
+        modalReviewText.textContent = text || '（未設定）';
+        if (copyModalTextButton) {
+            copyModalTextButton.disabled = false;
+        }
+    };
+
+    const showMediaInModal = (value) => {
+        if (!modalMedia || !modalReviewText) {
+            showTextInModal(value);
+            return;
+        }
+
+        const mediaType = detectMediaType(value);
+        if (!mediaType) {
+            showTextInModal(value);
+            return;
+        }
+
+        const parsedUrl = asHttpUrl(value);
+        if (!parsedUrl) {
+            showTextInModal(value);
+            return;
+        }
+
+        modalReviewText.hidden = true;
+        modalMedia.hidden = false;
+
+        if (mediaType === 'video') {
+            const video = document.createElement('video');
+            video.controls = true;
+            video.preload = 'metadata';
+            video.src = parsedUrl.href;
+            modalMedia.appendChild(video);
+        } else {
+            const image = document.createElement('img');
+            image.src = parsedUrl.href;
+            image.alt = '提出物プレビュー';
+            image.addEventListener('error', () => {
+                resetModalContent();
+                showTextInModal(value);
+            }, { once: true });
+            modalMedia.appendChild(image);
+        }
+
+        if (copyModalTextButton) {
+            copyModalTextButton.disabled = true;
+        }
+    };
+
     const openModal = (title, text) => {
         if (!modal || !modalReviewText) return;
+        resetModalContent();
         if (modalTitle) {
             modalTitle.textContent = `${title}（全文）`;
         }
-        modalReviewText.textContent = text || '（未設定）';
+        showMediaInModal(text || '');
         modal.classList.add('is-open');
         modal.setAttribute('aria-hidden', 'false');
     };
 
     const closeModal = () => {
         if (!modal) return;
+        resetModalContent();
         modal.classList.remove('is-open');
         modal.setAttribute('aria-hidden', 'true');
     };

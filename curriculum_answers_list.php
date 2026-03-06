@@ -905,6 +905,7 @@ function pageUrl(int $targetPage, string $keyword, string $doneFilter): string
     <div class="modal__overlay js-close-modal"></div>
     <div class="modal__content" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
         <h2 id="modalTitle">全文表示</h2>
+        <div id="modalMedia" class="modal__media" hidden></div>
         <pre id="modalReviewText"></pre>
         <div class="modal__actions">
             <button type="button" class="copy-btn js-copy-modal-text">コピー</button>

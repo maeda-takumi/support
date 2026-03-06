@@ -234,6 +234,22 @@ h1 {
     line-height: 1.5;
 }
 
+.modal__media {
+    border: 2px solid var(--ink);
+    padding: 12px;
+    background: #f7f7f7;
+    max-height: 50vh;
+    overflow: auto;
+}
+
+.modal__media img,
+.modal__media video {
+    display: block;
+    max-width: 100%;
+    max-height: 46vh;
+    margin: 0 auto;
+    object-fit: contain;
+}
 .modal__actions {
     margin-top: 12px;
     display: flex;
