@@ -87,7 +87,7 @@ h1 {
 }
 
 .answer-card {
-    border: 2px solid var(--ink);
+    border: 0px solid var(--ink);
     padding: 12px;
     background: #fff;
     display: flex;

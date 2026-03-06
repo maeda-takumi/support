@@ -796,7 +796,7 @@ function pageUrl(int $targetPage, string $keyword, string $doneFilter): string
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>curriculum_answer 一覧</title>
+    <title>フィードバック管理</title>
     <link rel="icon" type="image/png" href="./img/icon.png">
     <link rel="apple-touch-icon" href="./img/icon.png">
     <link rel="stylesheet" href="./curriculum_answers_list.css?v=<?= time(); ?>">
@@ -804,7 +804,7 @@ function pageUrl(int $targetPage, string $keyword, string $doneFilter): string
 <body>
 <div class="page">
     <header class="header">
-        <h1>curriculum_answer 一覧</h1>
+        <h1>カリキュラム 一覧</h1>
         <p>総件数: <?= number_format($totalRows); ?>件 / <?= $page; ?>ページ目</p>
         <form method="get" class="search-form">
             <label>

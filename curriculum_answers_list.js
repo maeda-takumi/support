@@ -87,7 +87,8 @@
             return;
         }
 
-        modalReviewText.hidden = true;
+        modalReviewText.hidden = false;
+        modalReviewText.textContent = parsedUrl.href;
         modalMedia.hidden = false;
 
         if (mediaType === 'video') {
@@ -108,7 +109,7 @@
         }
 
         if (copyModalTextButton) {
-            copyModalTextButton.disabled = true;
+            copyModalTextButton.disabled = false;
         }
     };
 
